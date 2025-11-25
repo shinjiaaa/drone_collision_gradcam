@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Collision Grad-CAM Demo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Collision Grad-CAM</h1>
+    <div class="uploader">
+      <input id="fileinput" type="file" accept="image/*" />
+      <button id="send" disabled>업로드 & 예측</button>
+    </div>
+    <div id="result" class="hidden">
+      <div class="info">
+        <p>예측: <span id="pred"></span></p>
+        <p>확률: <span id="probs"></span></p>
+      </div>
+      <div class="images">
+        <img id="outimg" alt="Grad-CAM result" />
+      </div>
+    </div>
+    <div id="loading" class="hidden">처리중...</div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
