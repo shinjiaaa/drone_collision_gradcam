@@ -1,4 +1,3 @@
-# gradcam.py - Keras(.h5) 모델 전용 Grad-CAM 구현
 import tensorflow as tf
 import numpy as np
 import cv2
