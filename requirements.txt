@@ -1,8 +1,8 @@
 fastapi
-uvicorn[standard]
-python-multipart
-pillow
-numpy
+uvicorn
 opencv-python
-tensorflow
-python-dotenv
+tensorflow>=2.10
+numpy
+openai
+python-multipart
+jinja2

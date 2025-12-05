@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Grad-CAM Collision Demo</title>
+  <style>
+    body { font-family: Arial; display:flex; gap:16px; padding:16px; }
+    #video { border:1px solid #ccc; }
+    #info { max-width:360px; }
+    #desc { white-space:pre-wrap; }
+  </style>
+</head>
+
+<body>
+  <div>
+    <h3>실시간 영상 (Grad-CAM 오버레이)</h3>
+    <img id="video" src="/video_feed" width="640" height="480" />
+
+    <h3>이미지 업로드 분석</h3>
+    <input type="file" id="imgInput" accept="image/*" />
+    <br><br>
+    <button onclick="uploadImage()">업로드 이미지 분석하기</button>
+
+    <div style="margin-top:10px;">
+      <img id="uploadedPreview" width="320" />
+    </div>
+  </div>
+
+  <div id="info">
+    <h3>설명 (LLM)</h3>
+    <div id="desc">로딩 중...</div>
+  </div>
+
+<script>
+// -------------------------------
+// LLM 설명 주기적 업데이트
+// -------------------------------
+async function fetchDesc() {
+  try {
+    const res = await fetch('/latest_description');
+    const j = await res.json();
+    document.getElementById('desc').textContent = j.text || '설명 없음';
+  } catch (e) {
+    console.error(e);
+  }
+}
+setInterval(fetchDesc, 1200);
+fetchDesc();
+
+
+// -------------------------------
+// 이미지 업로드 분석
+// -------------------------------
+async function uploadImage() {
+  const fileInput = document.getElementById("imgInput");
+  const file = fileInput.files[0];
+  if (!file) {
+    alert("이미지를 선택하세요!");
+    return;
+  }
+
+  // 미리보기 표시
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById("uploadedPreview").src = reader.result;
+  };
+  reader.readAsDataURL(file);
+
+  // 서버로 전송
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch("/analyze_upload", {
+      method: "POST",
+      body: formData
+    });
+    const j = await res.json();
+    console.log(j);
+    document.getElementById("desc").textContent = j.text || "결과 없음";
+  } catch (err) {
+    console.error(err);
+    alert("이미지 분석 중 오류 발생!");
+  }
+}
+</script>
+</body>
+</html>
