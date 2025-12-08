@@ -3,15 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>드론 충돌 감지 Grad-CAM 분석</title>
+    <title>Grad-CAM</title>
     <link rel="stylesheet" href="../static/style.css" />
   </head>
 
   <body>
-    <!-- 실시간 영상 및 업로드 영역 -->
     <div id="realtime-section" class="container">
-      <h3>실시간 드론 영상 분석</h3>
-      <!-- MJPEG 스트리밍 -->
+      <h3>실시간 영상 프레임</h3>
       <img
         id="video"
         src="/video_feed"
@@ -19,6 +17,21 @@
         width="640"
         height="480"
       />
+
+      <div id="info-section" class="container">
+        <h3>LLM Explainer</h3>
+
+        <div id="risk-indicator-container">
+          <h4>충돌 위험률</h4>
+          <div id="risk-percent" class="risk-level-label safe">--% (안전)</div>
+          <p style="font-size: 0.9em; color: #aaa">
+            (85% ↑ 위험, 75% ↑ 주의, 그 이하 안전)
+          </p>
+        </div>
+
+        <h4>모델 예측 근거</h4>
+        <div id="desc">실시간 설명을 로딩 중입니다...</div>
+      </div>
 
       <div id="upload-section">
         <h3>이미지 파일 분석</h3>
@@ -29,23 +42,6 @@
 
         <img id="uploadedPreview" alt="업로드 이미지 미리보기 및 분석 결과" />
       </div>
-    </div>
-
-    <!-- LLM 설명 및 위험률 표시 영역 -->
-    <div id="info-section" class="container">
-      <h3>LLM 기반 상황 설명</h3>
-
-      <!-- 충돌 위험률 표시기 -->
-      <div id="risk-indicator-container">
-        <h4>충돌 위험률</h4>
-        <div id="risk-percent" class="risk-level-label safe">--% (안전)</div>
-        <p style="font-size: 0.9em; color: #aaa">
-          (85%↑ 위험, 75%↑ 주의, 그 이하 안전)
-        </p>
-      </div>
-
-      <h4>모델 예측 근거</h4>
-      <div id="desc">실시간 설명을 로딩 중입니다...</div>
     </div>
 
     <script src="../static/main.js"></script>

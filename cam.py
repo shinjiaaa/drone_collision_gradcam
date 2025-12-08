@@ -4,6 +4,7 @@ import time
 import numpy as np
 from model import CollisionModel
 
+
 class Camera:
     def __init__(self, source=0, width=640, height=480):
         self.source = source
@@ -67,13 +68,7 @@ class Camera:
             self.cap.release()
 
 
-# -----------------------------
-# CollisionModel 로드
-# -----------------------------
-model = CollisionModel("rebuilt_model.h5", input_size=(128,128))
+model = CollisionModel("rebuilt_model.h5", input_size=(128, 128))
 
-# -----------------------------
-# Camera 생성 및 모델 주입
-# -----------------------------
 camera = Camera(source=0, width=640, height=480)
 camera.set_model(model)
