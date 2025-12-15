@@ -2,150 +2,133 @@ import numpy as np
 import cv2
 import tensorflow as tf
 from tensorflow.keras.models import load_model, clone_model
-from tensorflow.keras.layers import Input, Conv2D, Layer  # Layer 임포트 추가
-import os
+from tensorflow.keras.layers import Conv2D
 
 
 class CollisionModel:
     def __init__(self, model_path, input_size=(128, 128)):
         self.input_size = input_size
 
-        # 1. 모델 로드
+        # 모델 로드
         loaded_model = load_model(model_path)
 
         try:
-            # 2. 모델 구조를 복제하고 가중치 전송
             self.model = clone_model(loaded_model)
             self.model.set_weights(loaded_model.get_weights())
             self.model.trainable = False
-
         except Exception as e:
-            print(f"⚠️ clone_model 또는 가중치 전송 실패: {e}")
-            self.model = loaded_model  # 실패 시 기존 모델을 사용하도록 폴백
+            print(f"⚠️ clone 실패, 원본 모델 사용: {e}")
+            self.model = loaded_model
 
-        self.last_conv_layer_name = None
-
+        # 모델 빌드 보장
         dummy = np.zeros((1, input_size[0], input_size[1], 3), dtype=np.float32)
-        try:
-            _ = self.model(dummy)
-        except Exception as e:
-            print(f"⚠️ 모델 빌드 검증 실패: {e}")
+        _ = self.model(dummy)
 
-        # 마지막 Conv layer 찾기
-        conv_layers = [
-            layer for layer in self.model.layers if isinstance(layer, Conv2D)
-        ]
-
-        if conv_layers:
-            self.last_conv_layer_name = conv_layers[-1].name
+        # 마지막 Conv layer 탐색
+        self.last_conv_layer_name = None
+        for layer in reversed(self.model.layers):
+            if isinstance(layer, Conv2D):
+                self.last_conv_layer_name = layer.name
+                break
 
         if self.last_conv_layer_name is None:
-            print("⚠️ Conv 레이어 없음 → Grad-CAM을 계산할 수 없습니다.")
+            print("⚠️ Conv layer 없음 → Grad-CAM 불가")
 
-    # 입력 전처리
+    # -------------------------------
+    # Preprocess
+    # -------------------------------
     def preprocess(self, bgr):
-        # BGR을 RGB로 변환
         img = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        # 입력 크기로 리사이즈
         img = cv2.resize(img, self.input_size)
-        # 정규화 (0.0 ~ 1.0)
         img = img.astype(np.float32) / 255.0
-        # 배치 차원 추가
-        return tf.convert_to_tensor(np.expand_dims(img, axis=0))
+        return tf.convert_to_tensor(img[None, ...])
 
-    # Grad-CAM 계산
+    # -------------------------------
+    # Grad-CAM
+    # -------------------------------
     def compute_gradcam(self, x_tensor):
         if self.last_conv_layer_name is None:
-            return np.zeros((x_tensor.shape[1], x_tensor.shape[2]), dtype=np.float32)
-        with tf.GradientTape(persistent=True) as tape:
-            # 입력 텐서를 추적 대상으로 설정
-            tape.watch(x_tensor)
+            return np.zeros(self.input_size, dtype=np.float32)
 
-            current_tensor = x_tensor
-            conv_outputs = None
+        with tf.GradientTape() as tape:
+            current = x_tensor
+            conv_out = None
 
             for layer in self.model.layers:
-                if isinstance(layer, tf.keras.layers.InputLayer):
-                    continue
-
-                try:
-                    current_tensor = layer(current_tensor)
-                except Exception as e:
-                    continue
-
+                current = layer(current)
                 if layer.name == self.last_conv_layer_name:
-                    conv_outputs = current_tensor
+                    conv_out = current
 
-            predictions = current_tensor
+            loss = current[:, 0]
 
-            if conv_outputs is None:
-                print("⚠️ Grad-CAM: Conv Layer 출력을 찾지 못했습니다.")
-                return np.zeros(
-                    (x_tensor.shape[1], x_tensor.shape[2]), dtype=np.float32
-                )
-            loss = predictions[:, 0]
-        grads = tape.gradient(loss, conv_outputs)
-
-        del tape
-
+        grads = tape.gradient(loss, conv_out)
         if grads is None:
-            print("⚠️ Gradient Tape에서 기울기 계산에 실패했습니다. (grads is None)")
-            return np.zeros((x_tensor.shape[1], x_tensor.shape[2]), dtype=np.float32)
+            return np.zeros(self.input_size, dtype=np.float32)
 
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+        conv_out = conv_out[0].numpy()
 
-        conv_outputs_np = conv_outputs[0].numpy()
-        pooled_grads_np = pooled_grads.numpy()
-
-        heatmap = np.zeros(conv_outputs_np.shape[:2], dtype=np.float32)
-        for i in range(pooled_grads_np.shape[0]):
-            heatmap += pooled_grads_np[i] * conv_outputs_np[:, :, i]
+        heatmap = np.zeros(conv_out.shape[:2], dtype=np.float32)
+        for i in range(pooled_grads.shape[0]):
+            heatmap += pooled_grads[i] * conv_out[:, :, i]
 
         heatmap = np.maximum(heatmap, 0)
-        heatmap_max = np.max(heatmap)
-        if heatmap_max > 0:
-            heatmap /= heatmap_max
+        if heatmap.max() > 0:
+            heatmap /= heatmap.max()
 
         return heatmap
 
-    def predict_and_gradcam(self, bgr):
-        # 1. 전처리
-        x_tensor = self.preprocess(bgr)
+    # -------------------------------
+    # BBox 중심 수축
+    # -------------------------------
+    @staticmethod
+    def shrink_bbox(bbox, ratio=0.85):
+        x, y, w, h = bbox
+        cx, cy = x + w / 2, y + h / 2
+        nw, nh = int(w * ratio), int(h * ratio)
+        nx, ny = int(cx - nw / 2), int(cy - nh / 2)
+        return nx, ny, nw, nh
 
-        # 2. 예측
-        preds = self.model(x_tensor).numpy()[0]
-        prob = float(preds[0])
+    # -------------------------------
+    # Predict + Grad-CAM + ROI
+    # -------------------------------
+    def predict_and_gradcam(self, bgr):
+        # 예측
+        x_tensor = self.preprocess(bgr)
+        prob = float(self.model(x_tensor).numpy()[0][0])
         label = "collision" if prob > 0.5 else "normal"
 
-        # 3. Grad-CAM 계산
+        # Grad-CAM
         heatmap = self.compute_gradcam(x_tensor)
+        heatmap = cv2.resize(heatmap, (bgr.shape[1], bgr.shape[0]))
 
-        # 4. 시각화 및 ROI
-        heatmap_resized = cv2.resize(heatmap, (bgr.shape[1], bgr.shape[0]))
-
-        # 컬러맵 적용
-        heat_color = cv2.applyColorMap(
-            np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET
-        )
-
-        # 원본 이미지와 히트맵 오버레이
+        # 시각화
+        heat_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
         overlay = cv2.addWeighted(bgr, 0.6, heat_color, 0.4, 0)
 
-        # ROI Bounding Box 추출
+        # -------------------------------
+        # ROI 보정 (핵심)
+        # -------------------------------
         bbox = None
-        if self.last_conv_layer_name is not None:
-            # 8비트 이미지로 변환
-            thresh = (heatmap_resized * 255).astype(np.uint8)
-            # 임계값 (threshold)을 설정하여 중요한 영역만 이진화 (180 이상)
-            _, th = cv2.threshold(thresh, 180, 255, cv2.THRESH_BINARY)
-            # 윤곽선 찾기
-            contours, _ = cv2.findContours(
-                th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
+        heat_uint8 = np.uint8(255 * heatmap)
+        thresh_val = int(heat_uint8.max() * 0.6)
 
+        _, th = cv2.threshold(heat_uint8, thresh_val, 255, cv2.THRESH_BINARY)
+
+        kernel = np.ones((5, 5), np.uint8)
+        th = cv2.morphologyEx(th, cv2.MORPH_OPEN, kernel)
+        th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, kernel)
+
+        contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if contours:
+            contours = [
+                c
+                for c in contours
+                if cv2.contourArea(c) > 0.01 * bgr.shape[0] * bgr.shape[1]
+            ]
             if contours:
-                # 가장 큰 윤곽선에 대한 Bounding Box 계산
                 x, y, w, h = cv2.boundingRect(max(contours, key=cv2.contourArea))
-                bbox = (x, y, w, h)
+                bbox = self.shrink_bbox((x, y, w, h))
 
         return overlay, label, {"bbox": bbox, "prob": prob}

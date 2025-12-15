@@ -1,13 +1,8 @@
-// ----------------------------------------
-// 위험률 표시 업데이트
-// ----------------------------------------
 function updateRiskIndicator(probPercentStr) {
     const riskElement = document.getElementById('risk-percent');
 
-    // 클래스 초기화
     riskElement.className = 'risk-level-label';
 
-    // "87.32%" → 87.32
     const prob = parseFloat(probPercentStr.replace('%', ''));
 
     let className;
@@ -28,18 +23,13 @@ function updateRiskIndicator(probPercentStr) {
     riskElement.textContent = `${probPercentStr} (${statusText})`;
 }
 
-// ----------------------------------------
-// 주기적 LLM 설명 + 위험률 갱신
-// ----------------------------------------
 async function fetchDesc() {
     try {
         const res = await fetch('/latest_description');
         const j = await res.json();
 
-        // LLM 설명
         document.getElementById('desc').textContent = j.text || '설명 없음';
 
-        // 위험률
         if (j.prob_percent !== undefined && j.prob_percent !== null) {
             updateRiskIndicator(j.prob_percent);
         } else {
@@ -53,13 +43,9 @@ async function fetchDesc() {
     }
 }
 
-// 최초 1회 + 주기적 호출
 document.addEventListener('DOMContentLoaded', fetchDesc);
 setInterval(fetchDesc, 1200);
 
-// ----------------------------------------
-// 이미지 업로드 및 분석
-// ----------------------------------------
 async function uploadImage() {
     const fileInput = document.getElementById('imgInput');
     const file = fileInput.files[0];
@@ -71,12 +57,10 @@ async function uploadImage() {
         return;
     }
 
-    // UI 초기 상태
     riskElement.textContent = '... 분석 중 ...';
     riskElement.className = 'risk-level-label';
     descElement.textContent = '이미지를 서버로 전송하여 분석을 시작합니다...';
 
-    // 업로드 이미지 미리보기
     const reader = new FileReader();
     reader.onload = () => {
         document.getElementById('uploadedPreview').src = reader.result;
@@ -98,14 +82,11 @@ async function uploadImage() {
 
         const j = await res.json();
 
-        // 결과 이미지 표시
         document.getElementById('uploadedPreview').src =
             `data:image/jpeg;base64,${j.image}`;
 
-        // LLM 설명
         descElement.textContent = j.text || 'LLM 설명 없음';
 
-        // 위험률 (prob_percent만 사용)
         if (j.prob_percent !== undefined && j.prob_percent !== null) {
             updateRiskIndicator(j.prob_percent);
         } else {
@@ -116,8 +97,8 @@ async function uploadImage() {
     } catch (err) {
         console.error('이미지 분석 중 오류 발생:', err);
         alert(`이미지 분석 중 오류 발생: ${err.message}`);
-        descElement.textContent = '❌ 이미지 분석 실패';
-        riskElement.textContent = '--% (실패)';
+        descElement.textContent = '이미지 분석 실패';
+        riskElement.textContent = '--%';
         riskElement.className = 'risk-level-label danger';
     }
 }

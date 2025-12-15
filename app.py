@@ -12,6 +12,10 @@ from model import CollisionModel
 from llm_integration import describe_heatmap
 from utils import bgr_to_jpeg_bytes, jpeg_bytes_to_base64
 
+from risk_refiner import RiskRefiner
+
+risk_refiner = RiskRefiner()
+
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
