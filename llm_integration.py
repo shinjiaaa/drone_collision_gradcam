@@ -12,9 +12,15 @@ try:
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 except Exception:
     client = None
-    print("⚠️ 경고: OpenAI API 클라이언트 초기화 실패. API 키를 확인해주세요.")
+    print("OpenAI API 클라이언트 초기화 실패. API 키를 확인하세요.")
 
 GPT_MODEL = "gpt-3.5-turbo"
+
+LABEL_MAP = {
+    "collision": "장애물",
+    "person": "사람",
+    "car": "차량",
+}
 
 
 async def call_openai_api(system_prompt, user_query):
@@ -54,61 +60,59 @@ async def call_openai_api(system_prompt, user_query):
     return default_response
 
 
-async def describe_heatmap(label, heatmap_meta):
+def get_avoid_direction(direction):
+    if direction == "좌측":
+        return "우측"
+    elif direction == "우측":
+        return "좌측"
+    else:
+        return "상승"
+
+
+def get_direction_from_bbox(bbox, frame_width):
+    """
+    bbox 중심 x 좌표 기준으로 좌/전/우 판단
+    """
+    x, y, w, h = bbox
+    center_x = x + w / 2
+
+    if center_x < frame_width / 3:
+        return "좌측"
+    elif center_x > frame_width * 2 / 3:
+        return "우측"
+    else:
+        return "전방"
+
+
+async def describe_heatmap(label, heatmap_meta, frame_width):
     bbox = heatmap_meta.get("bbox")
-    prob_percent = heatmap_meta.get("prob_percent")
     prob = heatmap_meta.get("prob")
 
-    # if bbox is not None:
-    #     x, y, w, h = bbox
-    #     if w > 0 and h > 0:
-    #         bbox_desc = (
-    #             f"Area detected at position ({x}, {y}) with size {w}x{h} pixels."
-    #         )
-    #     else:
-    #         bbox_desc = "Diffuse focus without a clear bounding box."
-    # else:
-    #     bbox_desc = "No distinct highlighted area (bbox) found, focus is diffuse."
+    object_name = LABEL_MAP.get(label, label)
 
-    # system_prompt = (
-    #     "You are an AI-powered safety assistant for an autonomous system. "
-    #     "Your task is to interpret model predictions and Grad-CAM data (heatmap location) "
-    #     "and provide a single, actionable, and very short textual alert. "
-    #     "Use simple, direct language. Start with the alert level (e.g., 'HIGH ALERT', 'MONITOR')."
-    # )
-
-    # user_query = (
-    #     f"The model predicted '{label}' with a probability of {prob_percent}. "
-    #     f"The Grad-CAM heatmap shows a significant focus on an area. {bbox_desc}. "
-    #     f"Based on this, provide a concise, single-sentence alert that combines "
-    #     f"the risk level and the potential location of the threat. If probability is > 0.7, use HIGH ALERT. "
-    #     f"If probability is between 0.5 and 0.7, use WARNING. If < 0.5, use MONITOR."
-    # )
-
-    if bbox is not None:
-        x, y, w, h = bbox
-        if w > 0 and h > 0:
-            bbox_desc = f"Grad-CAM이 ({x}, {y}) 위치에서 {w}x{h} 픽셀 크기의 영역에 집중하고 있습니다."
-        else:
-            bbox_desc = "명확한 경계 상자가 없어, 관심 영역이 퍼져 있는 형태입니다."
+    if prob is None:
+        prob_percent = "알 수 없음"
     else:
-        bbox_desc = "경계 상자(bbox)가 감지되지 않아, 관심 영역이 뚜렷하지 않습니다."
+        prob_percent = f"{int(prob * 100)}%"
+
+    if bbox and bbox[2] > 0 and bbox[3] > 0:
+        direction = get_direction_from_bbox(bbox, frame_width)
+    else:
+        direction = "전방"
+
+    avoid_direction = get_avoid_direction(direction)
 
     system_prompt = (
-        "당신은 자율 시스템을 위한 AI 기반 안전 보조장치입니다. "
-        "모델 예측 결과와 Grad-CAM 데이터(열지도 집중 영역)를 해석하여 "
-        "단 하나의 행동 지향적이고 매우 짧은 경고 문장을 생성하는 것이 역할입니다. "
-        "문장은 단순하고 직접적으로 표현하며, 경고 수준(예: '고위험', '주의 필요')으로 시작해야 합니다."
+        "당신은 자율 이동체용 충돌 회피 경고 문장 생성기입니다.\n"
+        "아래 정보를 사용하여 반드시 한 문장의 경고를 생성하세요.\n"
+        "다른 설명은 절대 추가하지 마세요."
     )
 
     user_query = (
-        f"모델이 '{label}'을(를) {prob_percent} 확률로 예측했습니다. "
-        f"Grad-CAM은 특정 영역에 높은 집중을 보였습니다. {bbox_desc} "
-        f"이를 바탕으로 위험 수준과 잠재적 위험 위치를 결합한 "
-        f"간결한 한 문장 경고를 생성하세요. "
-        f"확률이 0.7 이상이면 '고위험', 0.5~0.7 사이는 '주의', 0.5 미만은 '안전'을 사용하세요."
+        f"{direction}에 있는 {object_name}과 충돌할 확률이 {prob_percent}입니다. "
+        f"{avoid_direction}으로 회피하세요."
     )
 
-    llm_explanation = await call_openai_api(system_prompt, user_query)
+    text = await call_openai_api(system_prompt, user_query)
 
-    return llm_explanation
+    return {"text": text, "prob_percent": prob_percent}
