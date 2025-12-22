@@ -9,18 +9,10 @@ class RiskRefiner:
         min_bbox_area_ratio=0.01,
         max_bbox_area_ratio=0.6,
     ):
-        """
-        area_gain: 객체 크기에 따른 위험도 증폭 계수
-        min_bbox_area_ratio: 너무 작은 영역 제거 (노이즈)
-        max_bbox_area_ratio: 너무 큰 영역 제거 (배경)
-        """
         self.area_gain = area_gain
         self.min_ratio = min_bbox_area_ratio
         self.max_ratio = max_bbox_area_ratio
 
-    # --------------------------------------------------
-    # 1️⃣ Grad-CAM 기반 bbox 필터링 (배경 제거)
-    # --------------------------------------------------
     def refine_bbox(self, heatmap, bbox, frame_shape):
         if bbox is None:
             return None
@@ -46,9 +38,6 @@ class RiskRefiner:
 
         return bbox
 
-    # --------------------------------------------------
-    # 2️⃣ 객체 크기 기반 위험도 보정
-    # --------------------------------------------------
     def refine_risk(self, prob, bbox, frame_shape):
         if bbox is None:
             return prob
