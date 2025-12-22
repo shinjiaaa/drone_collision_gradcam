@@ -1,2 +1,2 @@
 # drone_collision_gradcam
-KCSE - Lime vs Grad-CAM: Quantitative comparison of real-time and safety indicators
+KCSE - A Grad-CAM-Basead Real-Time Collision Risk Perception and Evasive Maneuver Decision System for Autonomous Flight Safety Enhancement
