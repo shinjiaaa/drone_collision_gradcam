@@ -3,44 +3,50 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Grad-CAM</title>
+    <title>KCSE 2026 - Grad-CAM</title>
     <link rel="stylesheet" href="../static/style.css" />
   </head>
 
   <body>
-    <div id="realtime-section" class="container">
-      <h3>실시간 영상 프레임</h3>
-      <img
-        id="video"
-        src="/video_feed"
-        alt="실시간 Grad-CAM 영상 피드"
-        width="640"
-        height="480"
-      />
-
-      <div id="info-section" class="container">
-        <h3>LLM Explainer</h3>
-
+    <div class="main-wrapper">
+      <div class="live-section">
+        <h2>Real-time Camera</h2>
+        <img id="video" src="/video_feed" alt="실시간 Grad-CAM 피드" />
+        
         <div id="risk-indicator-container">
-          <h4>충돌 위험률</h4>
-          <div id="risk-percent" class="risk-level-label safe">--% (안전)</div>
-          <p style="font-size: 0.9em; color: #aaa">
+          <h4>현재 충돌 위험률</h4>
+          <div id="risk-percent" class="risk-level-label safe">--% (로딩 중)</div>
+          <p style="font-size: 0.85em; color: #666; margin-top: 5px;">
             (85% ↑ 위험, 75% ↑ 주의, 그 이하 안전)
           </p>
         </div>
 
-        <h4>모델 예측 근거</h4>
-        <div id="desc">실시간 설명을 로딩 중입니다...</div>
+        <div class="description-box">
+          <h4>LLM</h4>
+          <p id="desc" style="margin-top: 10px;">데이터를 분석 중입니다...</p>
+        </div>
       </div>
 
-      <div id="upload-section">
-        <h3>이미지 파일 분석</h3>
-        <div style="display: flex; gap: 10px; align-items: center">
+      <div class="upload-section">
+        <h2>Insert Image</h2>
+        <div>
           <input type="file" id="imgInput" accept="image/*" />
-          <button onclick="uploadImage()">분석 시작</button>
+          <button onclick="uploadImage()" class="btn-upload">분석 시작</button>
         </div>
 
-        <img id="uploadedPreview" alt="업로드 이미지 미리보기 및 분석 결과" />
+        <img id="uploadedPreview" src="../static/placeholder.png" alt="이미지를 업로드하면 결과가 여기에 표시됩니다." />
+        
+        <div class="description-box">
+          <h4>현재 충돌 위험률</h4>
+          <div id="upload-risk-percent" class="risk-level-label" style="display:inline-block; margin-top:10px;">--%</div>
+          <p style="font-size: 0.85em; color: #666; margin-top: 5px;">
+            (85% ↑ 위험, 75% ↑ 주의, 그 이하 안전)
+          </p>
+        </div>
+        <div class="description-box">
+          <h4>LLM</h4>
+          <p id="upload-desc" style="margin-top: 10px;">파일을 선택하고 분석 시작 버튼을 눌러 주세요.</p>
+        </div>
       </div>
     </div>
 

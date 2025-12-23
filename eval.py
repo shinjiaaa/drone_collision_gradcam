@@ -3,10 +3,22 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
+# ===============================
+# Matplotlib 전역 텍스트 크기 설정 (논문용)
+# ===============================
+plt.rcParams.update({
+    "font.size": 14,          # 기본 텍스트
+    "axes.titlesize": 16,     # 그래프 제목
+    "axes.labelsize": 15,     # x, y 라벨
+    "xtick.labelsize": 13,    # x축 눈금
+    "ytick.labelsize": 13,    # y축 눈금
+    "legend.fontsize": 13     # 범례
+})
+
+
 from tensorflow.keras.models import load_model
 from sklearn.metrics import (
     confusion_matrix,
-    ConfusionMatrixDisplay,
     roc_curve,
     auc,
     precision_recall_curve,
@@ -93,27 +105,25 @@ y_prob = model.predict(X).ravel()
 y_pred = (y_prob >= THRESHOLD).astype(int)
 
 # ===============================
-# 6. Confusion Matrix
+# 6. Confusion Matrix (Table 형태)
 # ===============================
 cm = confusion_matrix(y_true, y_pred)
+TN, FP, FN, TP = cm.ravel()
 
-disp = ConfusionMatrixDisplay(
-    confusion_matrix=cm,
-    display_labels=["Safe", "Collision"]
-)
-disp.plot()
-plt.title("Confusion Matrix (Sequential Validation)")
-plt.show()
+print("\n===== Confusion Matrix (Table Format) =====")
+print(f"{'':>12} | {'Pred Safe':>10} | {'Pred Collision':>14}")
+print("-" * 42)
+print(f"{'True Safe':>12} | {TN:>10} | {FP:>14}")
+print(f"{'True Collision':>12} | {FN:>10} | {TP:>14}")
 
 # ===============================
-# 7. ROC Curve
+# 7. ROC Curve (AUC 곡선만)
 # ===============================
 fpr, tpr, _ = roc_curve(y_true, y_prob)
 roc_auc = auc(fpr, tpr)
 
 plt.figure()
 plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.3f}")
-plt.plot([0, 1], [0, 1], linestyle="--", color="red")
 plt.xlabel("False Positive Rate")
 plt.ylabel("True Positive Rate")
 plt.legend()
@@ -158,7 +168,7 @@ rec = recall_score(y_true, y_pred)
 f1 = f1_score(y_true, y_pred)
 
 # ===============================
-# 11. 성능 지표 Bar Chart (추가됨)
+# 11. 성능 지표 Bar Chart
 # ===============================
 metrics = {
     "Accuracy": acc,
@@ -182,7 +192,7 @@ plt.show()
 # ===============================
 # 12. 정량 지표 출력
 # ===============================
-print("===== Collision Classification Performance (Sequential Validation) =====")
+print("\n===== Collision Classification Performance =====")
 print(f"Accuracy  : {acc:.4f}")
 print(f"Precision : {prec:.4f}")
 print(f"Recall    : {rec:.4f}")

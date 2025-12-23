@@ -38,7 +38,7 @@ async def call_openai_api(system_prompt, user_query):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model=GPT_MODEL, messages=messages, temperature=0.7 # 약간의 창의성을 위해 0.7 권장
+                model=GPT_MODEL, messages=messages, temperature=0.7 
             )
             text_part = response.choices[0].message.content.strip()
             if text_part:
@@ -54,61 +54,75 @@ async def call_openai_api(system_prompt, user_query):
     return "응답 지연으로 인해 해석을 생성할 수 없습니다."
 
 def get_direction_from_bbox(bbox, frame_width):
+    """
+    히트맵의 빨간색 영역(BBox)의 중심점을 계산하여 위치 판정
+    """
+    if not bbox:
+        return "중앙 전방"
+    
     x, y, w, h = bbox
-    center_x = x + w / 2
-    if center_x < frame_width * 0.33:
+    # 박스의 중심점 계산 (중앙을 기준으로 판정 정확도 향상)
+    center_x = x + (w / 2)
+    
+    # 프레임을 3등분 (35% / 30% / 35% 비중)
+    left_threshold = frame_width * 0.35
+    right_threshold = frame_width * 0.65
+    
+    if center_x < left_threshold:
         return "좌측"
-    elif center_x > frame_width * 0.66:
+    elif center_x > right_threshold:
         return "우측"
     else:
         return "중앙 전방"
 
-async def describe_heatmap(label, info, frame_width):
+async def describe_heatmap(label, info, frame_width, calibrated_prob=None):
     """
-    label: "collision" 또는 "normal"
-    info: {'bbox': (x, y, w, h), 'prob': 원본확률, 'refined_prob': 보정확률, 'is_valid': 보정결과}
+    히트맵 시각화 결과와 위험 수치를 결합하여 자연스러운 안내문 생성
     """
-    refined_prob = info.get('refined_prob', 0.0)
-    prob_percent = round(refined_prob * 100, 1)
+    # 1. 수치 보정 확인 (전달받은 증폭 수치가 없으면 백업 계산)
+    if calibrated_prob is None:
+        refined_prob = info.get('refined_prob', 0.0)
+        calibrated_prob = int(refined_prob * 100)
+
     bbox = info.get('bbox')
     object_name = LABEL_MAP.get(label, label)
     
-    # 1. 장애물 위치 분석
-    position_text = "전방"
-    if bbox:
-        position_text = get_direction_from_bbox(bbox, frame_width)
+    # 2. 위치 판정 (히트맵 중심점 기준)
+    position_text = get_direction_from_bbox(bbox, frame_width)
 
-    # 2. 위험 수준 정의
-    if refined_prob > 0.8:
-        level = "매우 높음 (즉시 회피 필요)"
-    elif refined_prob > 0.5:
+    # 3. 위험 등급 설정
+    if calibrated_prob >= 85:
+        level = "매우 높음 (즉시 회피 기동 필요)"
+    elif calibrated_prob >= 75:
         level = "주의 (장애물 감지)"
     else:
         level = "안전 (정상 비행)"
 
-    # 3. 프롬프트 구성
+    # 4. 프롬프트 구성 (히트맵 시각적 일치성 강조 및 기술 용어 제거)
     system_prompt = (
-        "당신은 드론의 지능형 안전 보조 시스템입니다. 조종사에게 상황을 설명하고 안전 지침을 제공하세요.\n"
-        "Grad-CAM 시각화와 위험률 보정 알고리즘을 통해 도출된 결과를 바탕으로 말하세요."
+        "당신은 드론의 지능형 안전 보조 AI입니다. Grad-CAM 히트맵 분석 결과를 바탕으로 조종사에게 브리핑하세요.\n"
+        "특히 히트맵에서 '빨간색으로 강조된 영역'은 현재 가장 위험한 지점입니다.\n"
+        "조종사가 보고 있는 빨간색 영역과 당신의 설명이 정확히 일치해야 신뢰를 얻을 수 있습니다."
     )
 
     user_query = f"""
-    [현재 분석 데이터]
-    - 감지된 대상: {object_name}
-    - 장애물 추정 위치: {position_text}
-    - 보정된 충돌 위험도: {prob_percent}%
-    - 현재 위험 수준: {level}
+    [시각적 분석 데이터]
+    - 감지 대상: {object_name}
+    - 히트맵 주요 강조 지점(빨간 영역 위치): {position_text}
+    - 현재 충돌 위험도: {calibrated_prob}%
+    - 현재 위험 등급: {level}
 
-    [미션]
-    1. 현재 상황을 조종사에게 한국어로 명확히 설명하세요.
-    2. '시각적 근거' 또는 '위험률 보정'이 적용되었음을 은연중에 언급하여 신뢰성을 확보하세요.
-    3. 장애물 위치를 피할 수 있는 구체적인 회피 방향을 포함해 2-3문장으로 답하세요.
+    [작성 지침 - 중요]
+    1. '보정된', '알고리즘', '수치상' 같은 딱딱한 기술 용어는 절대 쓰지 마세요.
+    2. "현재 충돌 위험도는 {calibrated_prob}%입니다."라고 문장을 시작하세요.
+    3. 히트맵의 빨간색 영역인 '{position_text}'에 위험 요소가 있음을 알리세요.
+    4. 반드시 해당 빨간색 영역({position_text})을 피해서 반대 방향으로 이동하라는 구체적인 지시를 포함해 2문장으로 답하세요.
     """
 
-    # 실제 API 호출
+    # OpenAI API 호출
     text = await call_openai_api(system_prompt, user_query)
 
     return {
         "text": text,
-        "prob_percent": prob_percent
+        "prob_percent": calibrated_prob
     }
