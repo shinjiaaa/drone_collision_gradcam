@@ -75,54 +75,75 @@ def get_direction_from_bbox(bbox, frame_width):
     else:
         return "중앙 전방"
 
-async def describe_heatmap(label, info, frame_width, calibrated_prob=None):
+async def describe_heatmap(label, info, frame_width, **kwargs):
     """
-    히트맵 시각화 결과와 위험 수치를 결합하여 자연스러운 안내문 생성
+    label: 감지된 클래스명
+    info: 모델 분석 정보 (prob_percent, ttc, trend_str, bbox 포함)
+    frame_width: 화면 너비
+    **kwargs: calibrated_prob 등 예상치 못한 인자 대응
     """
-    # 1. 수치 보정 확인 (전달받은 증폭 수치가 없으면 백업 계산)
-    if calibrated_prob is None:
-        refined_prob = info.get('refined_prob', 0.0)
-        calibrated_prob = int(refined_prob * 100)
-
-    bbox = info.get('bbox')
-    object_name = LABEL_MAP.get(label, label)
+    # 1. 데이터 추출 (다양한 인자 이름 대응)
+    prob_percent = kwargs.get('calibrated_prob') 
+    if prob_percent is None:
+        prob_percent = info.get('prob_percent', 0)
     
-    # 2. 위치 판정 (히트맵 중심점 기준)
-    position_text = get_direction_from_bbox(bbox, frame_width)
+    # 소수점일 경우를 대비해 한 번 더 정수화
+    prob_percent = int(prob_percent if prob_percent >= 1 else prob_percent * 100)
+        
+    ttc = info.get('ttc', 99.0)
+    trend = info.get('trend_str', "유지")
+    bbox = info.get('bbox')
+    
+    # 2. 장애물 위치 및 회피 방향 매핑
+    pos = get_direction_from_bbox(bbox, frame_width)
+    
+    evade_map = {
+        "중앙 전방": "좌측 혹은 우측으로 회피",
+        "좌측": "우측으로 회피",
+        "우측": "좌측으로 회피",
+        "전방": "후방으로 기동"
+    }
+    evade_dir = evade_map.get(pos, "경로 재탐색")
 
-    # 3. 위험 등급 설정
-    if calibrated_prob >= 85:
-        level = "매우 높음 (즉시 회피 기동 필요)"
-    elif calibrated_prob >= 75:
-        level = "주의 (장애물 감지)"
-    else:
-        level = "안전 (정상 비행)"
+    # [지연 방지 필터링] 위험도가 낮고 안정적이면 LLM 호출 생략
+    if prob_percent < 40 and trend != "급상승":
+        return {"text": "현재 경로 안전 확보 중.", "prob_percent": prob_percent}
 
-    # 4. 프롬프트 구성 (히트맵 시각적 일치성 강조 및 기술 용어 제거)
+    # 3. LLM 페르소나 및 지침
     system_prompt = (
-        "당신은 드론의 지능형 안전 보조 AI입니다. Grad-CAM 히트맵 분석 결과를 바탕으로 조종사에게 브리핑하세요.\n"
-        "특히 히트맵에서 '빨간색으로 강조된 영역'은 현재 가장 위험한 지점입니다.\n"
-        "조종사가 보고 있는 빨간색 영역과 당신의 설명이 정확히 일치해야 신뢰를 얻을 수 있습니다."
+        "당신은 드론 지능형 부조종사입니다. 조종사에게 수치적 데이터와 명확한 행동 지침만 전달하세요. "
+        "0.97 같은 소수점은 절대 쓰지 마세요. 안정적이라는 안심 멘트도 하지 마세요."
     )
 
-    user_query = f"""
-    [시각적 분석 데이터]
-    - 감지 대상: {object_name}
-    - 히트맵 주요 강조 지점(빨간 영역 위치): {position_text}
-    - 현재 충돌 위험도: {calibrated_prob}%
-    - 현재 위험 등급: {level}
+    # 4. 프롬프트 구성
+    ttc_text = f"{ttc:.1f}초 후 충돌! " if ttc < 10 else ""
+    warning_suffix = " 경고!" if trend == "급상승" else ""
 
-    [작성 지침 - 중요]
-    1. '보정된', '알고리즘', '수치상' 같은 딱딱한 기술 용어는 절대 쓰지 마세요.
-    2. "현재 충돌 위험도는 {calibrated_prob}%입니다."라고 문장을 시작하세요.
-    3. 히트맵의 빨간색 영역인 '{position_text}'에 위험 요소가 있음을 알리세요.
-    4. 반드시 해당 빨간색 영역({position_text})을 피해서 반대 방향으로 이동하라는 구체적인 지시를 포함해 2문장으로 답하세요.
+    # 1. TTC 문구 사전 준비 (10초 미만일 때만 구체적인 초 명시)
+    if ttc < 10:
+        ttc_sentence = f"{ttc:.1f}초 후 충돌 예정입니다. "
+    else:
+        ttc_sentence = ""
+
+    # 2. 프롬프트 구성
+    user_query = f"""
+    [실시간 분석 데이터]
+    - 위험률: {prob_percent}%
+    - 예상시간: {f'{ttc:.1f}초' if ttc < 10 else '여유 있음'}
+    - 장애물 위치: {pos}
+    - 추세: {trend}
+    - 회피 방향: {evade_dir}
+
+    [작성 지침]
+    1. 다음 형식을 반드시 지켜서 한 문장으로 출력하세요: {pos}에 장애물이 감지되었습니다. {ttc_sentence}{evade_dir}하세요.{' 경고!' if trend == '급상승' else ''}
+    2. 소수점 수치(0.97 등)나 다른 설명은 일절 배제하세요.
+    3. 반드시 위 형식에 맞춰 조종사가 즉각 행동할 수 있도록 짧고 단호하게 답하세요.
     """
 
-    # OpenAI API 호출
+    # 5. API 호출
     text = await call_openai_api(system_prompt, user_query)
 
     return {
         "text": text,
-        "prob_percent": calibrated_prob
+        "prob_percent": prob_percent
     }

@@ -53,7 +53,6 @@ h2 {
 }
 
 h4 {
-    font-size: 0.85rem;
     margin: 5px 0;
     color: var(--text-dim);
 }
@@ -72,12 +71,12 @@ h4 {
 /* LLM/설명 박스 영역: 높이를 고정하여 레이아웃 흔들림 방지 */
 .description-box {
     background: #151515;
-    padding: 12px;
+    padding: 5px 10px;
     border-radius: 6px;
     font-size: 0.85rem;
     line-height: 1.5;
     border: 1px solid #252525;
-    margin-top: 10px; /* 박스 간 간격 추가 */
+    margin-top: 5px;
     flex-shrink: 0;   /* 박스가 찌그러지지 않게 설정 */
 }
 .description-box strong {
@@ -86,23 +85,29 @@ h4 {
     text-transform: uppercase;
     letter-spacing: 1px;
 }
-
-#desc, #upload-desc {
+#desc {
     margin: 0;
     color: #ccc;
     white-space: pre-wrap; /* 줄바꿈 허용 */
     word-break: keep-all;  /* 단어 단위 끊김 방지 */
-    /* max-height 제거 */
-    /* overflow-y 제거 */
+}
+
+#upload-desc {
+    margin: 0;
+    color: #ccc;
+    white-space: pre-wrap; /* 줄바꿈 허용 */
+    word-break: keep-all;  /* 단어 단위 끊김 방지 */
+    font-size: 1.1rem;
+    margin-bottom: 5px;
 }
 
 /* 위험 수치 레이블 */
 .risk-level-label {
     font-size: 0.95rem;
     font-weight: 700;
-    padding: 4px 8px;
+    padding: 1px 8px;
     border-radius: 4px;
-    margin-top: 5px;
+    margin-top: 2px;
     display: inline-block;
 }
 
