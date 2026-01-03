@@ -107,26 +107,50 @@ class UniversalCamera:
                     with self.lock: self.frame = frame
                 time.sleep(0.01)
 
+    def _calculate_latency(self, t_start, t1_end, t2_end, t3_end):
+        latency_t1 = t1_end - t_start
+        latency_t2 = t2_end - t1_end
+        latency_t3 = t3_end - t2_end
+        total_loop = t3_end - t_start
+        fps = 1.0 / total_loop if total_loop > 0 else 0
+        
+        # T1: 스테레오 카메라에서 영상 수집
+        # T2: CNN 모델이 충돌 분류 & Grad-CAM 생성
+        # T3: 히트맵, 위험도, LLM을 UI에 제공
+        print(f"\n[실시간성 검증] FPS: {fps:.1f} Hz")
+        print(f" - T1 (Sensing): {latency_t1:.4f}s")
+        print(f" - T2 (Inference): {latency_t2:.4f}s")
+        print(f" - T3 (Interpretation): {latency_t3:.4f}s")
+        print(f" - Total Pipeline: {total_loop:.4f}s")
+        
+        return fps
+
     def _predictor(self):
         while self.running:
+            t_start = time.perf_counter() # [T1 시작]
+
             frame = self.read()
             if frame is None or self.model is None:
-                time.sleep(0.01); continue
+                time.sleep(0.01)
+                continue
+            t1_end = time.perf_counter() # [T1 종료 / T2 시작]
 
+            # CNN 추론 및 Grad-CAM 생성 (T2)
             overlay, label, info = self.model.predict_and_gradcam(frame)
+            t2_end = time.perf_counter() # [T2 종료 / T3 시작]
             
-            # 1. 위험률 정수화 (0.97 -> 97%)
+            # 1. 위험률 정수화
             prob_percent = int(info.get('prob', 0.0) * 100)
             self.risk_history.append(prob_percent)
             
-            # 2. 추세 요약 (지연 방지: 리스트 대신 단어로 변환)
+            # 2. 추세 요약
             trend_str = "유지"
             if len(self.risk_history) >= 3:
                 diff = self.risk_history[-1] - self.risk_history[-3]
                 if diff > 15: trend_str = "급상승"
                 elif diff < -15: trend_str = "하락"
 
-            # 3. TTC 계산 (0.34 등 물리 값 기반)
+            # 3. TTC 계산
             ttc = 99.0
             bbox = info.get('bbox')
             if bbox and self.mode == "zed":
@@ -144,9 +168,9 @@ class UniversalCamera:
                         self.prev_distance, self.prev_time = d_val, now
 
                         if d_val < 1.5:
-                            ttc = min(ttc, 1.0) # 강제로 1초 후 충돌로 설정하여 경고 유도
+                            ttc = min(ttc, 1.0) 
 
-            # 데이터 압축 (LLM 지연 방지 핵심)
+            # 데이터 압축 및 공유 (T3)
             info.update({
                 'prob_percent': prob_percent,
                 'trend_str': trend_str,
@@ -155,6 +179,12 @@ class UniversalCamera:
             
             with self.lock:
                 self.pred_result = (overlay, label, info)
+            
+            t3_end = time.perf_counter() # [T3 종료]
+
+            # 신규 추가: 성능 지표 계산 함수 호출
+            self._calculate_latency(t_start, t1_end, t2_end, t3_end)
+
             time.sleep(0.05)
 
     def read(self):
