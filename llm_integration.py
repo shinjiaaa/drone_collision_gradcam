@@ -54,9 +54,6 @@ async def call_openai_api(system_prompt, user_query):
     return "응답 지연으로 인해 해석을 생성할 수 없습니다."
 
 def get_direction_from_bbox(bbox, frame_width):
-    """
-    히트맵의 빨간색 영역(BBox)의 중심점을 계산하여 위치 판정
-    """
     if not bbox:
         return "중앙 전방"
     
@@ -76,25 +73,16 @@ def get_direction_from_bbox(bbox, frame_width):
         return "중앙 전방"
 
 async def describe_heatmap(label, info, frame_width, **kwargs):
-    """
-    label: 감지된 클래스명
-    info: 모델 분석 정보 (prob_percent, ttc, trend_str, bbox 포함)
-    frame_width: 화면 너비
-    **kwargs: calibrated_prob 등 예상치 못한 인자 대응
-    """
-    # 1. 데이터 추출 (다양한 인자 이름 대응)
     prob_percent = kwargs.get('calibrated_prob') 
     if prob_percent is None:
         prob_percent = info.get('prob_percent', 0)
     
-    # 소수점일 경우를 대비해 한 번 더 정수화
     prob_percent = int(prob_percent if prob_percent >= 1 else prob_percent * 100)
         
     ttc = info.get('ttc', 99.0)
     trend = info.get('trend_str', "유지")
     bbox = info.get('bbox')
     
-    # 2. 장애물 위치 및 회피 방향 매핑
     pos = get_direction_from_bbox(bbox, frame_width)
     
     evade_map = {
@@ -105,27 +93,23 @@ async def describe_heatmap(label, info, frame_width, **kwargs):
     }
     evade_dir = evade_map.get(pos, "경로 재탐색")
 
-    # [지연 방지 필터링] 위험도가 낮고 안정적이면 LLM 호출 생략
     if prob_percent < 40 and trend != "급상승":
         return {"text": "현재 경로 안전 확보 중.", "prob_percent": prob_percent}
 
-    # 3. LLM 페르소나 및 지침
     system_prompt = (
         "당신은 드론 지능형 부조종사입니다. 조종사에게 수치적 데이터와 명확한 행동 지침만 전달하세요. "
         "0.97 같은 소수점은 절대 쓰지 마세요. 안정적이라는 안심 멘트도 하지 마세요."
     )
 
-    # 4. 프롬프트 구성
+    # 프롬프트 구성
     ttc_text = f"{ttc:.1f}초 후 충돌! " if ttc < 10 else ""
     warning_suffix = " 경고!" if trend == "급상승" else ""
 
-    # 1. TTC 문구 사전 준비 (10초 미만일 때만 구체적인 초 명시)
     if ttc < 10:
         ttc_sentence = f"{ttc:.1f}초 후 충돌 예정입니다. "
     else:
         ttc_sentence = ""
 
-    # 2. 프롬프트 구성
     user_query = f"""
     [실시간 분석 데이터]
     - 위험률: {prob_percent}%
@@ -140,7 +124,6 @@ async def describe_heatmap(label, info, frame_width, **kwargs):
     3. 반드시 위 형식에 맞춰 조종사가 즉각 행동할 수 있도록 짧고 단호하게 답하세요.
     """
 
-    # 5. API 호출
     text = await call_openai_api(system_prompt, user_query)
 
     return {

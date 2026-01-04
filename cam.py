@@ -170,7 +170,6 @@ class UniversalCamera:
                         if d_val < 1.5:
                             ttc = min(ttc, 1.0) 
 
-            # 데이터 압축 및 공유 (T3)
             info.update({
                 'prob_percent': prob_percent,
                 'trend_str': trend_str,
