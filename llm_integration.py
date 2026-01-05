@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 try:
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) # APIKEY 연구실 발급받은걸로바꾸기
 except Exception:
     client = None
     print("OpenAI API 클라이언트 초기화 실패. API 키를 확인하세요.")
@@ -58,10 +58,9 @@ def get_direction_from_bbox(bbox, frame_width):
         return "중앙 전방"
     
     x, y, w, h = bbox
-    # 박스의 중심점 계산 (중앙을 기준으로 판정 정확도 향상)
     center_x = x + (w / 2)
     
-    # 프레임을 3등분 (35% / 30% / 35% 비중)
+    # 프레임 추후 3/3/3 으로 나누기
     left_threshold = frame_width * 0.35
     right_threshold = frame_width * 0.65
     
@@ -101,7 +100,7 @@ async def describe_heatmap(label, info, frame_width, **kwargs):
         "0.97 같은 소수점은 절대 쓰지 마세요. 안정적이라는 안심 멘트도 하지 마세요."
     )
 
-    # 프롬프트 구성
+    # 프롬프트
     ttc_text = f"{ttc:.1f}초 후 충돌! " if ttc < 10 else ""
     warning_suffix = " 경고!" if trend == "급상승" else ""
 
